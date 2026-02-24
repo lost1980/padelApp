@@ -1,0 +1,5 @@
+{
+  "name": "Padel App",
+  "description": "A comprehensive padel tournament management app supporting mixed, male, and female categories with rotating or fixed teams.",
+  "requestFramePermissions": []
+}
