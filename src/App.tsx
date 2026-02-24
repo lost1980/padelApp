@@ -26,7 +26,8 @@ import {
   Match, 
   Gender,
   Team,
-  FixedTeamSubMode
+  FixedTeamSubMode,
+  RotationSubMode
 } from './types';
 
 // --- Constants & Helpers ---
@@ -48,13 +49,14 @@ export default function App() {
   const [tournamentType, setTournamentType] = useState<TournamentType>('mixed');
   const [teamMode, setTeamMode] = useState<TeamMode>('rotating');
   const [fixedSubMode, setFixedSubMode] = useState<FixedTeamSubMode>('random');
+  const [rotationSubMode, setRotationSubMode] = useState<RotationSubMode>('random');
   const [playerCount, setPlayerCount] = useState<number>(8);
   
   const [men, setMen] = useState<Player[]>(
-    Array.from({ length: 8 }, (_, i) => ({ id: `m-${i}`, name: `Uomo ${i + 1}`, gender: 'male' }))
+    Array.from({ length: 8 }, (_, i) => ({ id: `m-${i}`, name: `Uomo ${i + 1}`, gender: 'male', isSeed: false }))
   );
   const [women, setWomen] = useState<Player[]>(
-    Array.from({ length: 8 }, (_, i) => ({ id: `w-${i}`, name: `Donna ${i + 1}`, gender: 'female' }))
+    Array.from({ length: 8 }, (_, i) => ({ id: `w-${i}`, name: `Donna ${i + 1}`, gender: 'female', isSeed: false }))
   );
 
   // For manual fixed teams
@@ -69,16 +71,35 @@ export default function App() {
   // --- Logic ---
 
   const generateCalendar = () => {
-    const activeMen = shuffleArray(men.slice(0, playerCount / 2));
-    const activeWomen = shuffleArray(women.slice(0, playerCount / 2));
+    let groupA: Player[] = [];
+    let groupB: Player[] = [];
+
+    if (tournamentType === 'mixed') {
+      groupA = shuffleArray(women.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'female' as Gender })));
+      groupB = shuffleArray(men.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'male' as Gender })));
+    } else {
+      const gender: Gender = tournamentType === 'male' ? 'male' : 'female';
+      const listA = women.slice(0, playerCount / 2).map(p => ({ ...p, gender }));
+      const listB = men.slice(0, playerCount / 2).map(p => ({ ...p, gender }));
+      
+      if (teamMode === 'rotating') {
+        if (rotationSubMode === 'seeded') {
+          // In seeded mode, we treat the first list as seeds and the second as non-seeds
+          groupA = shuffleArray(listA);
+          groupB = shuffleArray(listB);
+        } else {
+          const allPlayers = shuffleArray([...listA, ...listB]);
+          groupA = allPlayers.slice(0, playerCount / 2);
+          groupB = allPlayers.slice(playerCount / 2);
+        }
+      } else {
+        // Fixed teams for M/F
+        groupA = [...listA, ...listB];
+      }
+    }
 
     if (teamMode === 'rotating') {
-      if (tournamentType !== 'mixed') {
-        alert("La rotazione è attualmente supportata solo per il torneo Misto.");
-        return;
-      }
-
-      const N = playerCount / 2; // Number of pairs
+      const N = playerCount / 2;
       const tempRounds: Round[] = [];
 
       for (let k = 0; k < N; k++) {
@@ -86,12 +107,11 @@ export default function App() {
         for (let i = 0; i < N; i++) {
           teams.push({
             id: generateId(),
-            player1: activeWomen[i],
-            player2: activeMen[(i + k) % N]
+            player1: groupA[i],
+            player2: groupB[(i + k) % N]
           });
         }
 
-        // Pair teams into matches
         const shuffledTeams = shuffleArray(teams);
         const matches: Match[] = [];
         for (let i = 0; i < N; i += 2) {
@@ -104,14 +124,9 @@ export default function App() {
             score2: null,
           });
         }
-
-        tempRounds.push({
-          number: k + 1,
-          matches
-        });
+        tempRounds.push({ number: k + 1, matches });
       }
 
-      // Shuffle the order of rounds to make it even more unpredictable
       const shuffledRounds = shuffleArray(tempRounds).map((r, idx) => ({
         ...r,
         number: idx + 1,
@@ -126,17 +141,31 @@ export default function App() {
       let teams: Team[] = [];
 
       if (fixedSubMode === 'random') {
-        const shuffledMen = shuffleArray(activeMen);
-        const shuffledWomen = shuffleArray(activeWomen);
-        for (let i = 0; i < playerCount / 2; i++) {
-          teams.push({
-            id: generateId(),
-            player1: shuffledWomen[i],
-            player2: shuffledMen[i]
-          });
+        if (tournamentType === 'mixed') {
+          const shuffledA: Player[] = shuffleArray(women.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'female' as Gender })));
+          const shuffledB: Player[] = shuffleArray(men.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'male' as Gender })));
+          for (let i = 0; i < playerCount / 2; i++) {
+            teams.push({
+              id: generateId(),
+              player1: shuffledA[i],
+              player2: shuffledB[i]
+            });
+          }
+        } else {
+          const gender: Gender = tournamentType === 'male' ? 'male' : 'female';
+          const allPlayers: Player[] = [...women.slice(0, playerCount / 2), ...men.slice(0, playerCount / 2)].map(p => ({ ...p, gender }));
+          const shuffled: Player[] = shuffleArray(allPlayers);
+          for (let i = 0; i < playerCount; i += 2) {
+            if (shuffled[i] && shuffled[i+1]) {
+              teams.push({
+                id: generateId(),
+                player1: shuffled[i],
+                player2: shuffled[i+1]
+              });
+            }
+          }
         }
       } else {
-        // Manual Teams
         const numTeams = playerCount / 2;
         for (let i = 0; i < numTeams; i++) {
           const t = manualTeams[i];
@@ -146,13 +175,12 @@ export default function App() {
           }
           teams.push({
             id: generateId(),
-            player1: { id: `manual-p1-${i}`, name: t.p1, gender: 'female' },
-            player2: { id: `manual-p2-${i}`, name: t.p2, gender: 'male' }
+            player1: { id: `manual-p1-${i}`, name: t.p1, gender: tournamentType === 'female' ? 'female' : 'male' },
+            player2: { id: `manual-p2-${i}`, name: t.p2, gender: tournamentType === 'female' ? 'female' : 'male' }
           });
         }
       }
 
-      // Round Robin for Teams
       const T = teams.length;
       const numRounds = T % 2 === 0 ? T - 1 : T;
       const newRounds: Round[] = [];
@@ -160,12 +188,9 @@ export default function App() {
 
       for (let r = 0; r < numRounds; r++) {
         const matches: Match[] = [];
-        const used = new Set<number>();
-
         for (let i = 0; i < T / 2; i++) {
           const t1Idx = teamIndices[i];
           const t2Idx = teamIndices[T - 1 - i];
-
           if (t1Idx !== undefined && t2Idx !== undefined) {
             matches.push({
               id: generateId(),
@@ -177,19 +202,12 @@ export default function App() {
             });
           }
         }
-
-        newRounds.push({
-          number: r + 1,
-          matches
-        });
-
-        // Rotate indices (except first one)
+        newRounds.push({ number: r + 1, matches });
         const first = teamIndices.shift()!;
         const last = teamIndices.pop()!;
         teamIndices.unshift(last);
         teamIndices.unshift(first);
       }
-
       setRounds(newRounds);
       setIsStarted(true);
       setActiveTab('calendar');
@@ -207,9 +225,38 @@ export default function App() {
   };
 
   const leaderboard = useMemo(() => {
-    const stats: Record<string, { id: string, name: string, gender: Gender, won: number, gamesWon: number, gamesLost: number }> = {};
+    if (teamMode === 'fixed') {
+      const teamStats: Record<string, { id: string, name: string, won: number, gamesWon: number, gamesLost: number }> = {};
+      
+      rounds.forEach(r => {
+        r.matches.forEach(m => {
+          if (m.score1 !== null && m.score2 !== null) {
+            const t1Name = `${m.team1.player1.name} / ${m.team1.player2.name}`;
+            const t2Name = `${m.team2.player1.name} / ${m.team2.player2.name}`;
+            
+            if (!teamStats[t1Name]) teamStats[t1Name] = { id: m.team1.id, name: t1Name, won: 0, gamesWon: 0, gamesLost: 0 };
+            if (!teamStats[t2Name]) teamStats[t2Name] = { id: m.team2.id, name: t2Name, won: 0, gamesWon: 0, gamesLost: 0 };
+            
+            teamStats[t1Name].gamesWon += m.score1!;
+            teamStats[t1Name].gamesLost += m.score2!;
+            if (m.score1! > m.score2!) teamStats[t1Name].won += 1;
+            
+            teamStats[t2Name].gamesWon += m.score2!;
+            teamStats[t2Name].gamesLost += m.score1!;
+            if (m.score2! > m.score1!) teamStats[t2Name].won += 1;
+          }
+        });
+      });
+      
+      const sorted = Object.values(teamStats).sort((a, b) => {
+        if (b.won !== a.won) return b.won - a.won;
+        return (b.gamesWon - b.gamesLost) - (a.gamesWon - a.gamesLost);
+      });
+      
+      return { all: sorted, isTeam: true };
+    }
 
-    // Collect all unique players from rounds to handle manual teams too
+    const stats: Record<string, { id: string, name: string, gender: Gender, won: number, gamesWon: number, gamesLost: number }> = {};
     const playersInTournament = new Map<string, Player>();
     rounds.forEach(r => {
       r.matches.forEach(m => {
@@ -228,13 +275,11 @@ export default function App() {
         if (m.score1 !== null && m.score2 !== null) {
           const t1 = [m.team1.player1, m.team1.player2];
           const t2 = [m.team2.player1, m.team2.player2];
-
           t1.forEach(p => {
             stats[p.id].gamesWon += m.score1!;
             stats[p.id].gamesLost += m.score2!;
             if (m.score1! > m.score2!) stats[p.id].won += 1;
           });
-
           t2.forEach(p => {
             stats[p.id].gamesWon += m.score2!;
             stats[p.id].gamesLost += m.score1!;
@@ -253,8 +298,9 @@ export default function App() {
       all: sorted,
       men: sorted.filter(p => p.gender === 'male'),
       women: sorted.filter(p => p.gender === 'female'),
+      isTeam: false
     };
-  }, [rounds]);
+  }, [rounds, teamMode]);
 
   const resetTournament = () => {
     if (confirm("Sei sicuro di voler resettare il torneo? Tutti i dati andranno persi.")) {
@@ -330,16 +376,15 @@ export default function App() {
                     {(['mixed', 'male', 'female'] as TournamentType[]).map((type) => (
                       <button
                         key={type}
-                        disabled={type !== 'mixed'}
                         onClick={() => setTournamentType(type)}
                         className={cn(
                           "py-3 rounded-xl border text-sm font-medium transition-all relative overflow-hidden",
                           tournamentType === type 
                             ? "bg-emerald-50 border-emerald-200 text-emerald-700 shadow-sm" 
-                            : "bg-white border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+                            : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
                         )}
                       >
-                        {type === 'mixed' ? 'Misto' : type === 'male' ? 'Maschile (Prossimamente)' : 'Femminile (Prossimamente)'}
+                        {type === 'mixed' ? 'Misto' : type === 'male' ? 'Maschile' : 'Femminile'}
                       </button>
                     ))}
                   </div>
@@ -384,6 +429,28 @@ export default function App() {
                         )}
                       >
                         Manuale
+                      </button>
+                    </div>
+                  )}
+                  {teamMode === 'rotating' && tournamentType !== 'mixed' && (
+                    <div className="flex gap-2 p-1 bg-gray-100 rounded-xl mt-2">
+                      <button 
+                        onClick={() => setRotationSubMode('random')}
+                        className={cn(
+                          "flex-1 py-1.5 text-xs font-bold rounded-lg transition-all",
+                          rotationSubMode === 'random' ? "bg-white shadow-sm text-emerald-600" : "text-gray-500"
+                        )}
+                      >
+                        Integrale
+                      </button>
+                      <button 
+                        onClick={() => setRotationSubMode('seeded')}
+                        className={cn(
+                          "flex-1 py-1.5 text-xs font-bold rounded-lg transition-all",
+                          rotationSubMode === 'seeded' ? "bg-white shadow-sm text-emerald-600" : "text-gray-500"
+                        )}
+                      >
+                        Teste di Serie
                       </button>
                     </div>
                   )}
@@ -452,16 +519,17 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    {/* Women List */}
+                    {/* List 1: Women / Seeds / Group A */}
                     <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm space-y-4">
                       <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
-                          <UserIcon className="w-4 h-4 text-pink-500" /> Donne ({playerCount / 2})
+                          <UserIcon className={cn("w-4 h-4", tournamentType === 'male' ? "text-blue-500" : "text-pink-500")} />
+                          {tournamentType === 'mixed' ? 'Donne' : rotationSubMode === 'seeded' ? 'Teste di Serie' : 'Gruppo A'} ({playerCount / 2})
                         </h2>
                       </div>
                       <div className="space-y-2">
                         {women.slice(0, playerCount / 2).map((player, idx) => (
-                          <div key={player.id} className="flex gap-2">
+                          <div key={player.id} className="flex gap-2 items-center">
                             <input
                               type="text"
                               value={player.name}
@@ -471,23 +539,24 @@ export default function App() {
                                 setWomen(newWomen);
                               }}
                               className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                              placeholder={`Nome Donna ${idx + 1}`}
+                              placeholder={`Nome ${tournamentType === 'mixed' ? 'Donna' : 'Giocatore'} ${idx + 1}`}
                             />
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    {/* Men List */}
+                    {/* List 2: Men / Non-Seeds / Group B */}
                     <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm space-y-4">
                       <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
-                          <UserIcon className="w-4 h-4 text-blue-500" /> Uomini ({playerCount / 2})
+                          <UserIcon className={cn("w-4 h-4", tournamentType === 'female' ? "text-pink-500" : "text-blue-500")} />
+                          {tournamentType === 'mixed' ? 'Uomini' : rotationSubMode === 'seeded' ? 'Non Teste di Serie' : 'Gruppo B'} ({playerCount / 2})
                         </h2>
                       </div>
                       <div className="space-y-2">
                         {men.slice(0, playerCount / 2).map((player, idx) => (
-                          <div key={player.id} className="flex gap-2">
+                          <div key={player.id} className="flex gap-2 items-center">
                             <input
                               type="text"
                               value={player.name}
@@ -497,7 +566,7 @@ export default function App() {
                                 setMen(newMen);
                               }}
                               className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                              placeholder={`Nome Uomo ${idx + 1}`}
+                              placeholder={`Nome ${tournamentType === 'mixed' ? 'Uomo' : 'Giocatore'} ${idx + 1}`}
                             />
                           </div>
                         ))}
@@ -633,12 +702,14 @@ export default function App() {
                             </td>
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-3">
-                                <div className={cn(
-                                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
-                                  p.gender === 'male' ? "bg-blue-100 text-blue-600" : "bg-pink-100 text-pink-600"
-                                )}>
-                                  {p.name.charAt(0)}
-                                </div>
+                                {!leaderboard.isTeam && (
+                                  <div className={cn(
+                                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold",
+                                    (p as any).gender === 'male' ? "bg-blue-100 text-blue-600" : "bg-pink-100 text-pink-600"
+                                  )}>
+                                    {p.name.charAt(0)}
+                                  </div>
+                                )}
                                 <span className="font-semibold">{p.name}</span>
                               </div>
                             </td>
@@ -660,49 +731,51 @@ export default function App() {
                 </div>
 
                 {/* Split Rankings */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  {/* Women Ranking */}
-                  <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-4">
-                    <h3 className="text-lg font-bold flex items-center gap-2 text-pink-600">
-                      <UserIcon className="w-5 h-5" /> Classifica Donne
-                    </h3>
-                    <div className="space-y-3">
-                      {leaderboard.women.map((p, idx) => (
-                        <div key={p.id} className="flex items-center justify-between p-3 bg-pink-50/50 rounded-2xl border border-pink-100">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-bold text-pink-400">#{idx + 1}</span>
-                            <span className="font-semibold text-sm">{p.name}</span>
+                {!leaderboard.isTeam && tournamentType === 'mixed' && leaderboard.women && leaderboard.men && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Women Ranking */}
+                    <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-4">
+                      <h3 className="text-lg font-bold flex items-center gap-2 text-pink-600">
+                        <UserIcon className="w-5 h-5" /> Classifica Donne
+                      </h3>
+                      <div className="space-y-3">
+                        {leaderboard.women.map((p, idx) => (
+                          <div key={p.id} className="flex items-center justify-between p-3 bg-pink-50/50 rounded-2xl border border-pink-100">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-pink-400">#{idx + 1}</span>
+                              <span className="font-semibold text-sm">{p.name}</span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs font-bold">
+                              <span className="text-pink-600">{p.won} V</span>
+                              <span className="text-gray-400">{p.gamesWon - p.gamesLost} Diff</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 text-xs font-bold">
-                            <span className="text-pink-600">{p.won} V</span>
-                            <span className="text-gray-400">{p.gamesWon - p.gamesLost} Diff</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Men Ranking */}
-                  <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-4">
-                    <h3 className="text-lg font-bold flex items-center gap-2 text-blue-600">
-                      <UserIcon className="w-5 h-5" /> Classifica Uomini
-                    </h3>
-                    <div className="space-y-3">
-                      {leaderboard.men.map((p, idx) => (
-                        <div key={p.id} className="flex items-center justify-between p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs font-bold text-blue-400">#{idx + 1}</span>
-                            <span className="font-semibold text-sm">{p.name}</span>
+                    {/* Men Ranking */}
+                    <div className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm space-y-4">
+                      <h3 className="text-lg font-bold flex items-center gap-2 text-blue-600">
+                        <UserIcon className="w-5 h-5" /> Classifica Uomini
+                      </h3>
+                      <div className="space-y-3">
+                        {leaderboard.men.map((p, idx) => (
+                          <div key={p.id} className="flex items-center justify-between p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-bold text-blue-400">#{idx + 1}</span>
+                              <span className="font-semibold text-sm">{p.name}</span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs font-bold">
+                              <span className="text-blue-600">{p.won} V</span>
+                              <span className="text-gray-400">{p.gamesWon - p.gamesLost} Diff</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-4 text-xs font-bold">
-                            <span className="text-blue-600">{p.won} V</span>
-                            <span className="text-gray-400">{p.gamesWon - p.gamesLost} Diff</span>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             </motion.div>
           )}
