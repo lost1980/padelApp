@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Trophy, 
   Users, 
@@ -67,6 +67,33 @@ export default function App() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [isStarted, setIsStarted] = useState(false);
   const [activeTab, setActiveTab] = useState<'setup' | 'calendar' | 'leaderboard'>('setup');
+
+  // Update default names when tournament type or player count changes
+  useEffect(() => {
+    if (tournamentType === 'mixed') {
+      setWomen(prev => prev.map((p, i) => 
+        (p.name.startsWith('Giocatore') || p.name.startsWith('Donna')) 
+        ? { ...p, name: `Donna ${i + 1}` } 
+        : p
+      ));
+      setMen(prev => prev.map((p, i) => 
+        (p.name.startsWith('Giocatore') || p.name.startsWith('Uomo')) 
+        ? { ...p, name: `Uomo ${i + 1}` } 
+        : p
+      ));
+    } else {
+      setWomen(prev => prev.map((p, i) => 
+        (p.name.startsWith('Donna') || p.name.startsWith('Giocatore')) 
+        ? { ...p, name: `Giocatore ${i + 1}` } 
+        : p
+      ));
+      setMen(prev => prev.map((p, i) => 
+        (p.name.startsWith('Uomo') || p.name.startsWith('Giocatore')) 
+        ? { ...p, name: `Giocatore ${i + (playerCount / 2) + 1}` } 
+        : p
+      ));
+    }
+  }, [tournamentType, playerCount]);
 
   // --- Logic ---
 
@@ -524,7 +551,7 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
                           <UserIcon className={cn("w-4 h-4", tournamentType === 'male' ? "text-blue-500" : "text-pink-500")} />
-                          {tournamentType === 'mixed' ? 'Donne' : rotationSubMode === 'seeded' ? 'Teste di Serie' : 'Gruppo A'} ({playerCount / 2})
+                          {tournamentType === 'mixed' ? 'Donne' : rotationSubMode === 'seeded' ? 'Teste di Serie' : `Giocatori (1-${playerCount / 2})`} ({playerCount / 2})
                         </h2>
                       </div>
                       <div className="space-y-2">
@@ -551,7 +578,7 @@ export default function App() {
                       <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-2">
                           <UserIcon className={cn("w-4 h-4", tournamentType === 'female' ? "text-pink-500" : "text-blue-500")} />
-                          {tournamentType === 'mixed' ? 'Uomini' : rotationSubMode === 'seeded' ? 'Non Teste di Serie' : 'Gruppo B'} ({playerCount / 2})
+                          {tournamentType === 'mixed' ? 'Uomini' : rotationSubMode === 'seeded' ? 'Non Teste di Serie' : `Giocatori (${playerCount / 2 + 1}-${playerCount})`} ({playerCount / 2})
                         </h2>
                       </div>
                       <div className="space-y-2">
@@ -566,7 +593,7 @@ export default function App() {
                                 setMen(newMen);
                               }}
                               className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                              placeholder={`Nome ${tournamentType === 'mixed' ? 'Uomo' : 'Giocatore'} ${idx + 1}`}
+                              placeholder={`Nome ${tournamentType === 'mixed' ? 'Uomo' : 'Giocatore'} ${idx + (playerCount / 2) + 1}`}
                             />
                           </div>
                         ))}
@@ -784,7 +811,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-gray-400 text-sm">
-        <p>© 2026 Padel App • Created by Luigi for Champions</p>
+        <p>© 2024 Padel App • Crafted for Champions</p>
       </footer>
     </div>
   );
