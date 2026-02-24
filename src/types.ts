@@ -2,11 +2,13 @@ export type Gender = 'male' | 'female';
 export type TournamentType = 'mixed' | 'male' | 'female';
 export type TeamMode = 'rotating' | 'fixed';
 export type FixedTeamSubMode = 'random' | 'manual';
+export type RotationSubMode = 'random' | 'seeded';
 
 export interface Player {
   id: string;
   name: string;
   gender: Gender;
+  isSeed?: boolean;
 }
 
 export interface Team {
