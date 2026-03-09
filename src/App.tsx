@@ -148,23 +148,16 @@ export default function App() {
       let bestRounds: Round[] = [];
       let bestScore = Infinity;
 
-      for (let attempt = 0; attempt < 2000; attempt++) {
+      const allPlayers = [...groupA, ...groupB];
+
+      for (let attempt = 0; attempt < 5000; attempt++) {
         const currentRounds: Round[] = [];
         const opponentCounts = new Map<string, Map<string, number>>();
-        const sameGenderOpponents = new Map<string, Set<string>>();
 
-        const addOpponent = (p1: Player, p2: Player) => {
-          const p1Id = p1.id;
-          const p2Id = p2.id;
-          
+        const addOpponent = (p1Id: string, p2Id: string) => {
           if (!opponentCounts.has(p1Id)) opponentCounts.set(p1Id, new Map());
           const map = opponentCounts.get(p1Id)!;
           map.set(p2Id, (map.get(p2Id) || 0) + 1);
-
-          if (p1.gender === p2.gender) {
-            if (!sameGenderOpponents.has(p1Id)) sameGenderOpponents.set(p1Id, new Set());
-            sameGenderOpponents.get(p1Id)!.add(p2Id);
-          }
         };
 
         for (let k = 0; k < N; k++) {
@@ -185,44 +178,51 @@ export default function App() {
               score2: null,
             });
 
-            // Track opponents
             const p1 = t1.player1; const p2 = t1.player2;
             const p3 = t2.player1; const p4 = t2.player2;
             
-            addOpponent(p1, p3); addOpponent(p3, p1);
-            addOpponent(p1, p4); addOpponent(p4, p1);
-            addOpponent(p2, p3); addOpponent(p3, p2);
-            addOpponent(p2, p4); addOpponent(p4, p2);
+            addOpponent(p1.id, p3.id); addOpponent(p3.id, p1.id);
+            addOpponent(p1.id, p4.id); addOpponent(p4.id, p1.id);
+            addOpponent(p2.id, p3.id); addOpponent(p3.id, p2.id);
+            addOpponent(p2.id, p4.id); addOpponent(p4.id, p2.id);
           }
           currentRounds.push({ number: k + 1, matches });
         }
 
-        // Calculate score: sum of squares of counts (penalizes repeats)
+        // --- AGGRESSIVE SCORING ---
         let score = 0;
         let maxRepeat = 0;
-        opponentCounts.forEach((map) => {
-          map.forEach((count) => {
-            score += count * count;
+
+        allPlayers.forEach(p1 => {
+          const opponents = opponentCounts.get(p1.id) || new Map();
+          
+          allPlayers.forEach(p2 => {
+            if (p1.id === p2.id) return;
+            
+            const count = opponents.get(p2.id) || 0;
             if (count > maxRepeat) maxRepeat = count;
+
+            if (p1.gender === p2.gender) {
+              // SAME GENDER: Must face everyone at least once
+              if (count === 0) score += 1000000; // HUGE penalty for missing opponent
+              score += count * count * 5000;    // Heavy penalty for repeats (2+2 is much worse than 2+1+1)
+            } else {
+              // OPPOSITE GENDER: Also prefer variety
+              if (count === 0) score += 10000;  // Penalty for missing opposite gender opponent
+              score += count * count * 1000;   // Penalty for repeats
+            }
           });
         });
 
-        // Hard penalties
-        if (maxRepeat > 2) score += 1000000; 
-
-        // Dynamic penalty: Each player MUST face all possible same-gender opponents at least once
-        // For N same-gender players, there are N-1 possible same-gender opponents.
-        const requiredDistinctOpponents = (playerCount / 2) - 1;
-        sameGenderOpponents.forEach((set) => {
-          if (set.size < requiredDistinctOpponents) {
-            score += 500000 * (requiredDistinctOpponents - set.size); 
-          }
-        });
+        if (maxRepeat > 2) score += 5000000; // Hard limit: never more than 2 repeats
 
         if (score < bestScore) {
           bestScore = score;
           bestRounds = currentRounds;
         }
+        
+        // If we found a "perfect" score (or very low), we can stop early
+        if (score === 0) break; 
       }
 
       // Shuffle the order of rounds for variety
@@ -883,7 +883,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-gray-400 text-sm">
-        <p>© 2026 Padel App • Created by Luigi</p>
+        <p>© 2024 Padel App • Crafted for Champions</p>
       </footer>
     </div>
   );
