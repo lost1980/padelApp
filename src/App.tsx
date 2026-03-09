@@ -883,7 +883,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-gray-400 text-sm">
-        <p>© 2024 Padel App • Crafted for Champions</p>
+        <p>© 2026 Padel App • Created by Luigi</p>
       </footer>
     </div>
   );
