@@ -98,39 +98,31 @@ export default function App() {
   // --- Logic ---
 
   const generateCalendar = () => {
-    let groupA: Player[] = [];
-    let groupB: Player[] = [];
+    const N = playerCount / 2;
+    const rounds: Round[] = [];
+    
+    if (teamMode === 'rotating') {
+      let groupA: Player[] = [];
+      let groupB: Player[] = [];
 
-    if (tournamentType === 'mixed') {
-      groupA = shuffleArray(women.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'female' as Gender })));
-      groupB = shuffleArray(men.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'male' as Gender })));
-    } else {
-      const gender: Gender = tournamentType === 'male' ? 'male' : 'female';
-      const listA = women.slice(0, playerCount / 2).map(p => ({ ...p, gender }));
-      const listB = men.slice(0, playerCount / 2).map(p => ({ ...p, gender }));
-      
-      if (teamMode === 'rotating') {
+      if (tournamentType === 'mixed') {
+        groupA = shuffleArray(women.slice(0, N).map(p => ({ ...p, gender: 'female' as Gender })));
+        groupB = shuffleArray(men.slice(0, N).map(p => ({ ...p, gender: 'male' as Gender })));
+      } else {
+        const gender: Gender = tournamentType === 'male' ? 'male' : 'female';
+        const listA = women.slice(0, N).map(p => ({ ...p, gender }));
+        const listB = men.slice(0, N).map(p => ({ ...p, gender }));
+        
         if (rotationSubMode === 'seeded') {
-          // In seeded mode, we treat the first list as seeds and the second as non-seeds
           groupA = shuffleArray(listA);
           groupB = shuffleArray(listB);
         } else {
           const allPlayers = shuffleArray([...listA, ...listB]);
-          groupA = allPlayers.slice(0, playerCount / 2);
-          groupB = allPlayers.slice(playerCount / 2);
+          groupA = allPlayers.slice(0, N);
+          groupB = allPlayers.slice(N);
         }
-      } else {
-        // Fixed teams for M/F
-        groupA = [...listA, ...listB];
       }
-    }
 
-    if (teamMode === 'rotating') {
-      const N = playerCount / 2;
-      
-      // We'll pre-generate the teams for each round to satisfy the partner constraint
-      // (Each player in groupA plays with each player in groupB exactly once)
-      const roundsTeams: Team[][] = [];
       for (let k = 0; k < N; k++) {
         const teams: Team[] = [];
         for (let i = 0; i < N; i++) {
@@ -140,99 +132,57 @@ export default function App() {
             player2: groupB[(i + k) % N]
           });
         }
-        roundsTeams.push(teams);
-      }
 
-      // Now we need to pair these teams in each round to minimize opponent repeats.
-      // We'll try many random configurations and pick the best one according to a score.
-      let bestRounds: Round[] = [];
-      let bestScore = Infinity;
-
-      const allPlayers = [...groupA, ...groupB];
-
-      for (let attempt = 0; attempt < 5000; attempt++) {
-        const currentRounds: Round[] = [];
-        const opponentCounts = new Map<string, Map<string, number>>();
-
-        const addOpponent = (p1Id: string, p2Id: string) => {
-          if (!opponentCounts.has(p1Id)) opponentCounts.set(p1Id, new Map());
-          const map = opponentCounts.get(p1Id)!;
-          map.set(p2Id, (map.get(p2Id) || 0) + 1);
-        };
-
-        for (let k = 0; k < N; k++) {
-          const teams = [...roundsTeams[k]];
-          const shuffledTeams = shuffleArray(teams);
-          const matches: Match[] = [];
-          
-          for (let i = 0; i < N; i += 2) {
-            const t1 = shuffledTeams[i];
-            const t2 = shuffledTeams[i+1];
-            
-            matches.push({
-              id: generateId(),
-              round: k + 1,
-              team1: t1,
-              team2: t2,
-              score1: null,
-              score2: null,
-            });
-
-            const p1 = t1.player1; const p2 = t1.player2;
-            const p3 = t2.player1; const p4 = t2.player2;
-            
-            addOpponent(p1.id, p3.id); addOpponent(p3.id, p1.id);
-            addOpponent(p1.id, p4.id); addOpponent(p4.id, p1.id);
-            addOpponent(p2.id, p3.id); addOpponent(p3.id, p2.id);
-            addOpponent(p2.id, p4.id); addOpponent(p4.id, p2.id);
-          }
-          currentRounds.push({ number: k + 1, matches });
+        const matches: Match[] = [];
+        // Deterministic pairings for the teams in each round
+        let pairings: [number, number][] = [];
+        if (N === 4) {
+          // User's template for 8 players
+          pairings = [
+            [[0, 1], [2, 3]], // R1: T0 vs T1, T2 vs T3
+            [[0, 2], [1, 3]], // R2: T0 vs T2, T1 vs T3
+            [[0, 3], [1, 2]], // R3: T0 vs T3, T1 vs T2
+            [[0, 1], [2, 3]], // R4: T0 vs T1, T2 vs T3
+          ][k] as [number, number][];
+        } else if (N === 6) {
+          // Template for 12 players
+          pairings = [
+            [[0, 1], [2, 3], [4, 5]],
+            [[0, 2], [1, 4], [3, 5]],
+            [[0, 3], [1, 5], [2, 4]],
+            [[0, 4], [2, 5], [1, 3]],
+            [[0, 5], [1, 2], [3, 4]],
+            [[0, 1], [2, 3], [4, 5]],
+          ][k] as [number, number][];
+        } else {
+          // Template for 16 players (N=8)
+          pairings = [
+            [[0, 1], [2, 3], [4, 5], [6, 7]],
+            [[0, 2], [1, 4], [3, 6], [5, 7]],
+            [[0, 3], [2, 5], [4, 7], [1, 6]],
+            [[0, 4], [3, 7], [2, 6], [1, 5]],
+            [[0, 5], [1, 7], [2, 4], [3, 6]],
+            [[0, 6], [1, 3], [2, 7], [4, 5]],
+            [[0, 7], [1, 2], [3, 4], [5, 6]],
+            [[0, 1], [2, 3], [4, 5], [6, 7]],
+          ][k] as [number, number][];
         }
 
-        // --- AGGRESSIVE SCORING ---
-        let score = 0;
-        let maxRepeat = 0;
-
-        allPlayers.forEach(p1 => {
-          const opponents = opponentCounts.get(p1.id) || new Map();
-          
-          allPlayers.forEach(p2 => {
-            if (p1.id === p2.id) return;
-            
-            const count = opponents.get(p2.id) || 0;
-            if (count > maxRepeat) maxRepeat = count;
-
-            if (p1.gender === p2.gender) {
-              // SAME GENDER: Must face everyone at least once
-              if (count === 0) score += 1000000; // HUGE penalty for missing opponent
-              score += count * count * 5000;    // Heavy penalty for repeats (2+2 is much worse than 2+1+1)
-            } else {
-              // OPPOSITE GENDER: Also prefer variety
-              if (count === 0) score += 10000;  // Penalty for missing opposite gender opponent
-              score += count * count * 1000;   // Penalty for repeats
-            }
+        for (let i = 0; i < pairings.length; i++) {
+          const p = pairings[i];
+          matches.push({
+            id: generateId(),
+            round: k + 1,
+            team1: teams[p[0]],
+            team2: teams[p[1]],
+            score1: null,
+            score2: null,
+            court: i + 1
           });
-        });
-
-        if (maxRepeat > 2) score += 5000000; // Hard limit: never more than 2 repeats
-
-        if (score < bestScore) {
-          bestScore = score;
-          bestRounds = currentRounds;
         }
-        
-        // If we found a "perfect" score (or very low), we can stop early
-        if (score === 0) break; 
+        rounds.push({ number: k + 1, matches });
       }
-
-      // Shuffle the order of rounds for variety
-      const shuffledRounds = shuffleArray(bestRounds).map((r, idx) => ({
-        ...r,
-        number: idx + 1,
-        matches: r.matches.map(m => ({ ...m, round: idx + 1 }))
-      }));
-
-      setRounds(shuffledRounds);
+      setRounds(rounds);
       setIsStarted(true);
       setActiveTab('calendar');
     } else {
@@ -241,9 +191,9 @@ export default function App() {
 
       if (fixedSubMode === 'random') {
         if (tournamentType === 'mixed') {
-          const shuffledA: Player[] = shuffleArray(women.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'female' as Gender })));
-          const shuffledB: Player[] = shuffleArray(men.slice(0, playerCount / 2).map(p => ({ ...p, gender: 'male' as Gender })));
-          for (let i = 0; i < playerCount / 2; i++) {
+          const shuffledA: Player[] = shuffleArray(women.slice(0, N).map(p => ({ ...p, gender: 'female' as Gender })));
+          const shuffledB: Player[] = shuffleArray(men.slice(0, N).map(p => ({ ...p, gender: 'male' as Gender })));
+          for (let i = 0; i < N; i++) {
             teams.push({
               id: generateId(),
               player1: shuffledA[i],
@@ -252,7 +202,7 @@ export default function App() {
           }
         } else {
           const gender: Gender = tournamentType === 'male' ? 'male' : 'female';
-          const allPlayers: Player[] = [...women.slice(0, playerCount / 2), ...men.slice(0, playerCount / 2)].map(p => ({ ...p, gender }));
+          const allPlayers: Player[] = [...women.slice(0, N), ...men.slice(0, N)].map(p => ({ ...p, gender }));
           const shuffled: Player[] = shuffleArray(allPlayers);
           for (let i = 0; i < playerCount; i += 2) {
             if (shuffled[i] && shuffled[i+1]) {
@@ -265,8 +215,7 @@ export default function App() {
           }
         }
       } else {
-        const numTeams = playerCount / 2;
-        for (let i = 0; i < numTeams; i++) {
+        for (let i = 0; i < N; i++) {
           const t = manualTeams[i];
           if (!t.p1 || !t.p2) {
             alert("Inserisci tutti i nomi per le squadre manuali.");
@@ -282,7 +231,6 @@ export default function App() {
 
       const T = teams.length;
       const numRounds = T % 2 === 0 ? T - 1 : T;
-      const newRounds: Round[] = [];
       const teamIndices = Array.from({ length: T }, (_, i) => i);
 
       for (let r = 0; r < numRounds; r++) {
@@ -298,16 +246,17 @@ export default function App() {
               team2: teams[t2Idx],
               score1: null,
               score2: null,
+              court: i + 1
             });
           }
         }
-        newRounds.push({ number: r + 1, matches });
+        rounds.push({ number: r + 1, matches });
         const first = teamIndices.shift()!;
         const last = teamIndices.pop()!;
         teamIndices.unshift(last);
         teamIndices.unshift(first);
       }
-      setRounds(newRounds);
+      setRounds(rounds);
       setIsStarted(true);
       setActiveTab('calendar');
     }
@@ -717,6 +666,9 @@ export default function App() {
                     <div className="p-6 space-y-6">
                       {round.matches.map((match, mIdx) => (
                         <div key={match.id} className="space-y-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-tighter text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Campo {match.court}</span>
+                          </div>
                           <div className="flex items-center justify-between gap-4">
                             {/* Team 1 */}
                             <div className="flex-1 text-right space-y-1">
@@ -883,7 +835,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-gray-400 text-sm">
-        <p>© 2026 Padel App • Created by Luigi</p>
+        <p>© 2024 Padel App • Crafted for Champions</p>
       </footer>
     </div>
   );
