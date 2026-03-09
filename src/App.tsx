@@ -127,8 +127,10 @@ export default function App() {
 
     if (teamMode === 'rotating') {
       const N = playerCount / 2;
-      const tempRounds: Round[] = [];
-
+      
+      // We'll pre-generate the teams for each round to satisfy the partner constraint
+      // (Each player in groupA plays with each player in groupB exactly once)
+      const roundsTeams: Team[][] = [];
       for (let k = 0; k < N; k++) {
         const teams: Team[] = [];
         for (let i = 0; i < N; i++) {
@@ -138,23 +140,93 @@ export default function App() {
             player2: groupB[(i + k) % N]
           });
         }
-
-        const shuffledTeams = shuffleArray(teams);
-        const matches: Match[] = [];
-        for (let i = 0; i < N; i += 2) {
-          matches.push({
-            id: generateId(),
-            round: k + 1,
-            team1: shuffledTeams[i],
-            team2: shuffledTeams[i + 1],
-            score1: null,
-            score2: null,
-          });
-        }
-        tempRounds.push({ number: k + 1, matches });
+        roundsTeams.push(teams);
       }
 
-      const shuffledRounds = shuffleArray(tempRounds).map((r, idx) => ({
+      // Now we need to pair these teams in each round to minimize opponent repeats.
+      // We'll try many random configurations and pick the best one according to a score.
+      let bestRounds: Round[] = [];
+      let bestScore = Infinity;
+
+      for (let attempt = 0; attempt < 2000; attempt++) {
+        const currentRounds: Round[] = [];
+        const opponentCounts = new Map<string, Map<string, number>>();
+        const sameGenderOpponents = new Map<string, Set<string>>();
+
+        const addOpponent = (p1: Player, p2: Player) => {
+          const p1Id = p1.id;
+          const p2Id = p2.id;
+          
+          if (!opponentCounts.has(p1Id)) opponentCounts.set(p1Id, new Map());
+          const map = opponentCounts.get(p1Id)!;
+          map.set(p2Id, (map.get(p2Id) || 0) + 1);
+
+          if (p1.gender === p2.gender) {
+            if (!sameGenderOpponents.has(p1Id)) sameGenderOpponents.set(p1Id, new Set());
+            sameGenderOpponents.get(p1Id)!.add(p2Id);
+          }
+        };
+
+        for (let k = 0; k < N; k++) {
+          const teams = [...roundsTeams[k]];
+          const shuffledTeams = shuffleArray(teams);
+          const matches: Match[] = [];
+          
+          for (let i = 0; i < N; i += 2) {
+            const t1 = shuffledTeams[i];
+            const t2 = shuffledTeams[i+1];
+            
+            matches.push({
+              id: generateId(),
+              round: k + 1,
+              team1: t1,
+              team2: t2,
+              score1: null,
+              score2: null,
+            });
+
+            // Track opponents
+            const p1 = t1.player1; const p2 = t1.player2;
+            const p3 = t2.player1; const p4 = t2.player2;
+            
+            addOpponent(p1, p3); addOpponent(p3, p1);
+            addOpponent(p1, p4); addOpponent(p4, p1);
+            addOpponent(p2, p3); addOpponent(p3, p2);
+            addOpponent(p2, p4); addOpponent(p4, p2);
+          }
+          currentRounds.push({ number: k + 1, matches });
+        }
+
+        // Calculate score: sum of squares of counts (penalizes repeats)
+        let score = 0;
+        let maxRepeat = 0;
+        opponentCounts.forEach((map) => {
+          map.forEach((count) => {
+            score += count * count;
+            if (count > maxRepeat) maxRepeat = count;
+          });
+        });
+
+        // Hard penalties
+        if (maxRepeat > 2) score += 1000000; 
+
+        // Dynamic penalty: Each player MUST face all possible same-gender opponents at least once
+        // For N same-gender players, there are N-1 possible same-gender opponents.
+        const requiredDistinctOpponents = (playerCount / 2) - 1;
+        sameGenderOpponents.forEach((set) => {
+          if (set.size < requiredDistinctOpponents) {
+            score += 500000 * (requiredDistinctOpponents - set.size); 
+          }
+        });
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestRounds = currentRounds;
+        }
+      }
+
+      // Shuffle the order of rounds for variety
+      const shuffledRounds = shuffleArray(bestRounds).map((r, idx) => ({
         ...r,
         number: idx + 1,
         matches: r.matches.map(m => ({ ...m, round: idx + 1 }))
@@ -811,7 +883,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="max-w-5xl mx-auto px-4 py-12 text-center text-gray-400 text-sm">
-        <p>© 2024 Padel App • Crafted for Champions</p>
+        <p>© 2026 Padel App • Created by Luigi</p>
       </footer>
     </div>
   );
