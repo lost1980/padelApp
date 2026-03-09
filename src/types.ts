@@ -24,6 +24,7 @@ export interface Match {
   score1: number | null;
   score2: number | null;
   round: number;
+  court?: number;
 }
 
 export interface Round {
